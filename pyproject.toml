@@ -22,7 +22,6 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.45.1,<2",
     "opentelemetry-instrumentation-fastapi==0.66b1",
     "opentelemetry-instrumentation-sqlalchemy==0.66b1",
-    "opentelemetry-instrumentation-httpx==0.66b1",
 ]
 
 [project.scripts]

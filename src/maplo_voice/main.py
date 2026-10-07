@@ -26,6 +26,7 @@ from maplo_voice.observability import (
     instrument_app,
     setup_telemetry,
 )
+from maplo_voice.services.openai_client import register_ai_services
 
 log = get_logger(__name__)
 
@@ -137,6 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     register_database(app, settings)
+    register_ai_services(app, settings)
     app.include_router(health_router)
     instrument_app(app, settings)
     return app

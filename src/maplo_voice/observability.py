@@ -3,7 +3,8 @@
 * structlog JSON logs, enriched with the active OpenTelemetry trace/span id so logs and
   traces correlate in Grafana/Jaeger.
 * OTLP (gRPC) export of traces and metrics to an OpenTelemetry Collector.
-* Auto-instrumentation for FastAPI, httpx (which the OpenAI SDK uses) and SQLAlchemy.
+* Auto-instrumentation for FastAPI and SQLAlchemy; OpenAI calls get explicit GenAI spans
+  (services/openai_client.py) because the v3 SDK uses httpx2.
 * Domain metrics for each voice-pipeline stage (ASR / LLM / TTS latency, time-to-first-audio).
 """
 
@@ -19,7 +20,6 @@ from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -189,7 +189,6 @@ def setup_telemetry(settings: Settings) -> Telemetry:
     )
     metrics.set_meter_provider(meter_provider)
 
-    HTTPXClientInstrumentor().instrument()
     _telemetry = Telemetry(tracer_provider, meter_provider)
     return _telemetry
 
