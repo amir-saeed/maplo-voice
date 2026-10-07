@@ -83,7 +83,14 @@ class Assessor(Protocol):
     def task_prompt(self, task_id: str | None) -> tuple[str, str]: ...
 
     async def assess(
-        self, *, session_id: uuid.UUID, tenant_id: str, task_id: str, transcript: Transcript
+        self,
+        *,
+        session_id: uuid.UUID,
+        tenant_id: str,
+        task_id: str,
+        transcript: Transcript,
+        pcm16: bytes,
+        sample_rate: int,
     ) -> AssessmentReply: ...
 
 
@@ -311,6 +318,8 @@ class VoiceAgentSession:
                 tenant_id=self.tenant_id,
                 task_id=self._task_id,
                 transcript=transcript,
+                pcm16=pcm16,
+                sample_rate=self._cfg.input_sample_rate,
             )
             await self._sender.send_event(
                 AssessmentResult(turn_index=rec.turn_index, result=reply.result)

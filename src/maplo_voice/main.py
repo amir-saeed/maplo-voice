@@ -18,7 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from maplo_voice import __version__
-from maplo_voice.api import documents, ws
+from maplo_voice.api import assessments, documents, ws
+from maplo_voice.assessment.service import register_assessment
 from maplo_voice.config import Settings, get_settings
 from maplo_voice.db.session import register_database
 from maplo_voice.observability import (
@@ -141,9 +142,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_database(app, settings)
     register_ai_services(app, settings)
+    register_assessment(app, settings)
     app.include_router(health_router)
     app.include_router(ws.router)
     app.include_router(documents.router)
+    app.include_router(assessments.router)
     instrument_app(app, settings)
     return app
 
