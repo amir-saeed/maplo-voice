@@ -167,6 +167,7 @@ class VoiceAgentSession:
         self._turn_task: asyncio.Task[None] | None = None
         self._next_turn = 0
         self._closed = False
+        self._pending_writes: set[asyncio.Task[None]] = set()
         # Stable, non-reversible id for provider abuse monitoring (never send raw user ids).
         self._safety_id = hashlib.sha256(f"{tenant_id}:{self.id}".encode()).hexdigest()[:32]
 
@@ -204,6 +205,8 @@ class VoiceAgentSession:
             return
         self._closed = True
         await self._cancel_turn()
+        if self._pending_writes:  # turn rows must land before the session is marked ended
+            await asyncio.gather(*self._pending_writes, return_exceptions=True)
         pipeline_metrics.active_sessions.add(-1, {"mode": self.mode.value})
         # Shielded: the socket task may be cancelled (client gone / shutdown) mid-write.
         await asyncio.shield(self._mark_ended(status))
@@ -290,8 +293,12 @@ class VoiceAgentSession:
             finally:
                 rec.total_ms = int((time.perf_counter() - speech_end) * 1000)
                 if rec.user_transcript:
-                    # Shield so a barge-in can't lose the record of the interrupted turn.
-                    await asyncio.shield(self._persist_turn(rec))
+                    # Run as its own task (tracked) and shield it, so a barge-in or a
+                    # disconnect can't lose the record; close() waits for pending writes.
+                    write = asyncio.create_task(self._persist_turn(rec))
+                    self._pending_writes.add(write)
+                    write.add_done_callback(self._pending_writes.discard)
+                    await asyncio.shield(write)
 
     async def _execute_turn(self, rec: TurnRecord, pcm16: bytes, speech_end: float) -> None:
         async def on_partial(text: str) -> None:

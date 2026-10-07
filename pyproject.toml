@@ -71,7 +71,7 @@ runtime-evaluated-base-classes = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "PLR2004", "S105", "S106"]
+"tests/**" = ["S101", "PLR2004", "S105", "S106", "PLR0911", "PLC0415"]
 "migrations/**" = ["N999"]
 
 [tool.mypy]
@@ -94,6 +94,7 @@ warn_required_dynamic_aliases = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-ra --strict-markers --cov=maplo_voice --cov-report=term-missing"
 markers = ["integration: requires a running PostgreSQL (docker compose up db)"]
 
