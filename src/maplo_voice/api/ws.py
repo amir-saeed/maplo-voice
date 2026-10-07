@@ -187,7 +187,9 @@ async def voice_websocket(
             mode=start.mode,
             language=start.language,
             task_id=start.task_id,
-            assessor=getattr(app.state, "assessor", None),
+            assessor=getattr(app.state, "assessor", None)
+            if start.mode is SessionMode.ASSESSMENT
+            else None,
             client_info={"user_agent": websocket.headers.get("user-agent", "")[:200]},
         )
         await session.start()

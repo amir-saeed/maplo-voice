@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maplo Voice</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Maplo Voice</h1>
+    <span id="status" class="pill" data-state="idle" role="status" aria-live="polite">Disconnected</span>
+  </header>
+
+  <main class="layout">
+    <!-- ------------------------------------------------------------ controls -->
+    <section class="panel controls" aria-labelledby="settings-title">
+      <h2 id="settings-title">Session</h2>
+
+      <fieldset class="mode" id="mode">
+        <legend>Mode</legend>
+        <label><input type="radio" name="mode" value="conversation" checked> Conversation</label>
+        <label><input type="radio" name="mode" value="assessment"> Speaking assessment</label>
+      </fieldset>
+
+      <label class="field" id="task-field" hidden>
+        <span>Speaking task</span>
+        <select id="task"></select>
+      </label>
+
+      <label class="field">
+        <span>Language</span>
+        <select id="language">
+          <option value="en" selected>English</option>
+          <option value="">Auto-detect</option>
+        </select>
+      </label>
+
+      <details class="advanced">
+        <summary>Connection</summary>
+        <label class="field">
+          <span>Tenant</span>
+          <input id="tenant" value="default" pattern="[a-z0-9][a-z0-9-]{0,63}" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>API token <small>(not stored)</small></span>
+          <input id="token" type="password" autocomplete="off" placeholder="optional in local dev">
+        </label>
+      </details>
+
+      <div class="mic">
+        <button id="start" class="primary" type="button">Start talking</button>
+        <button id="commit" type="button" disabled title="End your turn without waiting for silence">Done speaking</button>
+        <div class="meter" aria-hidden="true"><div id="level"></div></div>
+        <p class="hint">Use headphones for the best barge-in experience. Speak, then pause — the assistant replies when you stop.</p>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------ conversation -->
+    <section class="panel conversation" aria-labelledby="conv-title">
+      <h2 id="conv-title">Conversation</h2>
+      <div id="task-prompt" class="task-prompt" hidden></div>
+      <ol id="log" class="log" aria-live="polite"></ol>
+    </section>
+
+    <!-- ------------------------------------------------------------ insights -->
+    <section class="panel insights" aria-labelledby="insights-title">
+      <h2 id="insights-title">Latency (last turn)</h2>
+      <dl id="metrics" class="metrics">
+        <div><dt>Speech-to-text</dt><dd data-key="asr_ms">–</dd></div>
+        <div><dt>LLM first token</dt><dd data-key="llm_first_token_ms">–</dd></div>
+        <div><dt>TTS first byte</dt><dd data-key="tts_first_byte_ms">–</dd></div>
+        <div class="headline"><dt>Time to first audio</dt><dd data-key="time_to_first_audio_ms">–</dd></div>
+      </dl>
+      <p id="sources" class="sources" hidden></p>
+
+      <div id="assessment" class="assessment" hidden>
+        <h2>Assessment</h2>
+        <div class="cefr"><span id="cefr-level">–</span><small id="cefr-score"></small></div>
+        <ul id="criteria" class="criteria"></ul>
+        <p id="wpm" class="muted"></p>
+        <h3>Strengths</h3><ul id="strengths"></ul>
+        <h3>Next steps</h3><ul id="improvements"></ul>
+        <h3>Corrections</h3><ul id="corrections" class="corrections"></ul>
+      </div>
+    </section>
+  </main>
+
+  <template id="tpl-turn">
+    <li class="turn"><span class="who"></span><p class="text"></p></li>
+  </template>
+</body>
+</html>

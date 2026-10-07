@@ -10,12 +10,14 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import structlog
 from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from maplo_voice import __version__
 from maplo_voice.api import assessments, documents, ws
@@ -34,6 +36,20 @@ log = get_logger(__name__)
 
 ReadinessCheck = Callable[[], Awaitable[None]]
 REQUEST_ID_HEADER = "X-Request-ID"
+STATIC_DIR = Path(__file__).parent / "static"
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "microphone=(self), camera=(), geolocation=()",
+}
+# Strict CSP for the bundled UI only (Swagger /docs loads assets from a CDN).
+UI_CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "connect-src 'self' ws: wss:; media-src 'self' blob:; worker-src 'self'; "
+    "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+)
 
 
 # --------------------------------------------------------------------------- lifespan
@@ -119,6 +135,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         start = time.perf_counter()
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request_id
+        response.headers.update(SECURITY_HEADERS)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Content-Security-Policy"] = UI_CSP
+        if settings.is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if not request.url.path.startswith("/health"):
             log.info(
                 "http_request",
@@ -147,6 +168,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ws.router)
     app.include_router(documents.router)
     app.include_router(assessments.router)
+
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def index() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+
     instrument_app(app, settings)
     return app
 

@@ -149,9 +149,10 @@ class VoiceAgentSession:
         self.tenant_id = tenant_id
         self.mode = mode
         self.language = language
-        self._assessor = assessor
+        # The assessor is only relevant in assessment mode; ignore it otherwise.
+        self._assessor = assessor if mode is SessionMode.ASSESSMENT else None
         self._task_id, self._task_prompt = (
-            assessor.task_prompt(task_id) if assessor is not None else ("", "")
+            self._assessor.task_prompt(task_id) if self._assessor is not None else ("", "")
         )
         self._client_info = client_info or {}
         self._vad = EnergyVAD(
@@ -325,6 +326,9 @@ class VoiceAgentSession:
                 AssessmentResult(turn_index=rec.turn_index, result=reply.result)
             )
             rec.assistant_text = reply.spoken_feedback
+            await self._sender.send_event(
+                ResponseTextDelta(turn_index=rec.turn_index, delta=reply.spoken_feedback)
+            )
             await self._speak(_queue_from_text(reply.spoken_feedback), rec, speech_end)
         else:
             sources = await self._converse(transcript.text, rec, speech_end)
