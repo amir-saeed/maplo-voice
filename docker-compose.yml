@@ -1,0 +1,186 @@
+# Local stack: app + PostgreSQL/pgvector + OpenTelemetry Collector + Jaeger + Prometheus + Grafana
+#
+#   cp .env.example .env   # then set OPENAI__API_KEY and the local passwords
+#   docker compose up --build
+#
+#   App ............ http://localhost:8000       Jaeger (traces) ... http://localhost:16686
+#   Grafana ........ http://localhost:3000       Prometheus ........ http://localhost:9090
+#
+# All ports bind to 127.0.0.1 only. Small configs are inlined via `configs.content`
+# (Docker Compose >= 2.23) so the stack is self-contained in this one file.
+
+name: maplo-voice
+
+x-app-env: &app-env
+  DATABASE__URL: postgresql+asyncpg://${POSTGRES_USER:?set in .env}:${POSTGRES_PASSWORD:?set in .env}@db:5432/${POSTGRES_DB:-maplo_voice}
+  TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+  ENVIRONMENT: ${ENVIRONMENT:-local}
+  LOG_JSON: "true"
+
+services:
+  # --------------------------------------------------------------------------- data
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-maplo_voice}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    image: maplo-voice:local
+    command: ["alembic", "upgrade", "head"]
+    environment: *app-env
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  # --------------------------------------------------------------------------- app
+  app:
+    image: maplo-voice:local
+    env_file: [.env]
+    environment: *app-env
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      otel-collector: { condition: service_started }
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 35s
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------- observability
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.162.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    configs:
+      - source: otel_collector
+        target: /etc/otelcol/config.yaml
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC (lets you run the app outside Docker too)
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+    depends_on: [jaeger]
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    ports: ["127.0.0.1:16686:16686"]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+    ports: ["127.0.0.1:9090:9090"]
+    depends_on: [otel-collector]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.3
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/maplo-voice.json
+    configs:
+      - source: grafana_datasources
+        target: /etc/grafana/provisioning/datasources/datasources.yaml
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/dashboards.yaml
+    volumes:
+      - ./observability/grafana-dashboard.json:/var/lib/grafana/dashboards/maplo-voice.json:ro
+      - grafana:/var/lib/grafana
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [prometheus, jaeger]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  grafana:
+
+configs:
+  otel_collector:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc: { endpoint: 0.0.0.0:4317 }
+            http: { endpoint: 0.0.0.0:4318 }
+      processors:
+        memory_limiter:
+          check_interval: 1s
+          limit_percentage: 80
+          spike_limit_percentage: 25
+        batch: {}
+      exporters:
+        otlp/jaeger:
+          endpoint: jaeger:4317
+          tls: { insecure: true }
+        prometheus:
+          endpoint: 0.0.0.0:8889
+          resource_to_telemetry_conversion: { enabled: true }
+      extensions:
+        health_check: { endpoint: 0.0.0.0:13133 }
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [otlp/jaeger]
+          metrics:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [prometheus]
+
+  prometheus:
+    content: |
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: otel-collector
+          static_configs:
+            - targets: ["otel-collector:8889"]
+
+  grafana_datasources:
+    content: |
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          uid: prometheus
+          type: prometheus
+          access: proxy
+          url: http://prometheus:9090
+          isDefault: true
+        - name: Jaeger
+          uid: jaeger
+          type: jaeger
+          access: proxy
+          url: http://jaeger:16686
+
+  grafana_dashboards:
+    content: |
+      apiVersion: 1
+      providers:
+        - name: maplo-voice
+          folder: Maplo Voice
+          type: file
+          disableDeletion: true
+          options:
+            path: /var/lib/grafana/dashboards

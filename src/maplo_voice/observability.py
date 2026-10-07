@@ -195,12 +195,20 @@ def setup_telemetry(settings: Settings) -> Telemetry:
 
 def instrument_app(app: FastAPI, settings: Settings) -> None:
     if settings.telemetry.enabled:
-        FastAPIInstrumentor.instrument_app(app, excluded_urls="health/live,health/ready")
+        # exclude_spans: without it every WebSocket frame (audio every 20 ms) becomes a span,
+        # ~50 spans/s per session. Turn-level spans (voice.turn) carry the useful detail.
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls="health/live,health/ready",
+            exclude_spans=["receive", "send"],
+        )
 
 
 def instrument_engine(engine: AsyncEngine, settings: Settings) -> None:
     if settings.telemetry.enabled:
-        SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
+        # The instrumentor's declared range lags SQLAlchemy 2.1, but the engine event hooks
+        # it relies on are unchanged; skip the version gate (verified: DB spans are emitted).
+        SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine, skip_dep_check=True)
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
