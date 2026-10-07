@@ -64,6 +64,9 @@ class VoiceSettings(BaseModel):
     max_concurrent_sessions: int = Field(default=200, ge=1)
     session_idle_timeout_s: float = Field(default=120.0, gt=0)
     rag_top_k: int = Field(default=4, ge=1, le=20)
+    history_turns: int = Field(default=6, ge=1, le=50)
+    # Privacy: set False to persist only metrics, never what was said.
+    store_transcripts: bool = True
 
 
 class TelemetrySettings(BaseModel):
@@ -79,6 +82,10 @@ class AuthSettings(BaseModel):
     """Static bearer tokens for API + WebSocket access (swap for Cognito/OIDC JWTs in prod)."""
 
     api_tokens: list[SecretStr] = Field(default_factory=list)
+
+    def authorize(self, token: str | None) -> bool:
+        """No tokens configured = open (local/test only; enforced by Settings validator)."""
+        return self.is_valid(token) if self.api_tokens else True
 
     def is_valid(self, token: str | None) -> bool:
         if not token:

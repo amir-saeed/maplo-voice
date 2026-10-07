@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from maplo_voice import __version__
+from maplo_voice.api import documents, ws
 from maplo_voice.config import Settings, get_settings
 from maplo_voice.db.session import register_database
 from maplo_voice.observability import (
@@ -97,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.readiness_checks = {}
     app.state.startup_hooks = []
     app.state.shutdown_hooks = []
+    app.state.voice_sessions_active = 0
 
     app.add_middleware(
         CORSMiddleware,
@@ -140,6 +142,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_database(app, settings)
     register_ai_services(app, settings)
     app.include_router(health_router)
+    app.include_router(ws.router)
+    app.include_router(documents.router)
     instrument_app(app, settings)
     return app
 

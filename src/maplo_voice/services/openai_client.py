@@ -15,13 +15,12 @@ from typing import TYPE_CHECKING, Any
 import openai
 from openai import AsyncOpenAI
 from opentelemetry.trace import Span, StatusCode
+from starlette.requests import HTTPConnection  # noqa: TC002 - FastAPI resolves at runtime
 
 from maplo_voice.observability import get_logger, pipeline_metrics, tracer
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-    from starlette.requests import HTTPConnection
 
     from maplo_voice.config import Settings
     from maplo_voice.services.asr import OpenAITranscriber
